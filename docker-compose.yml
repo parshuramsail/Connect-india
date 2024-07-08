@@ -1,0 +1,197 @@
+version: '2'
+services:
+  rabbitmq:
+    image: rabbitmq:management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+
+  prometheus:
+    container_name: prom
+    image: prom/prometheus
+    restart: always
+    network_mode: "host"
+    hostname: localhost
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+
+
+  grafana:
+    container_name: graf
+    image: grafana/grafana
+    restart: always
+    network_mode: "host"
+    hostname: localhost
+    ports:
+      - 3000:3000
+
+  mongodb-service:
+    image: mongo:latest
+    container_name: "mongodb-service"
+    restart: always
+    hostname: localhost
+    ports:
+      - 27017:27017
+
+  mysqlservice:
+      image: mysql:latest
+      container_name: "mysqlservice"
+      hostname: localhost
+      ports:
+        - 3306:3306
+      environment:
+        MYSQL_ROOT_PASSWORD: root
+        MYSQL_DATABASE: authuser,authservice
+        MYSQL_PASSWORD: root
+        MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+
+  eureka-server:
+    image: eureka-server
+    container_name: "eureka-server"
+    build: eureka-server/
+    hostname: localhost
+    ports:
+      - 8761:8761
+
+  config-server:
+    image: config-server
+    container_name: "config-server"
+    build: config-server/
+    hostname: localhost
+    depends_on:
+      - eureka-server
+    ports:
+      - 8888:8888
+
+  api-gateway:
+    image: api-gateway
+    build: api-gateway/
+    container_name: "api-gateway-service"
+    hostname: localhost
+    ports:
+      - 8079:8079
+    environment:
+      - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+
+  email-service:
+    image: email-service
+    build: email-service/
+    container_name: "email-service"
+    hostname: localhost
+    ports:
+      - 8090:8090
+    environment:
+      - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+
+  slot-service:
+    image: slot-service
+    container_name: "slot-service"
+    build: slot-service/
+    hostname: localhost
+    ports:
+      - 8087:8087
+    links:
+      - mongodb-service
+    environment:
+      - spring_data_mongodb_uri=mongodb://mongodb-service:27017/SlotDB
+      - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+
+
+  user-service:
+    image: user-service
+    container_name: "user-service"
+    build: user-service/
+    hostname: localhost
+    ports:
+      - 8089:8089
+    links:
+      - mongodb-service
+    environment:
+#      - spring_data_mongodb_uri=mongodb://mongodb-service:27017/connect-india
+      - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+      - spring_data_mongodb_port=27017
+      - spring_data_mongodb_database=connect-india
+      - spring_data_mongodb_host=mongodb-service
+
+  product-service:
+      image: product-service
+      container_name: "product-service"
+      build: product-service/
+      hostname: localhost
+      ports:
+        - 8084:8084
+      links:
+        - mongodb-service
+      environment:
+#        - spring_data_mongodb_uri=mongodb://mongodb-service:27017/Project
+        - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+#        - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+        - spring_data_mongodb_port=27017
+        - spring_data_mongodb_database=project
+        - spring_data_mongodb_host=mongodb-service
+
+  payment-service:
+        image: payment-service
+        container_name: "payment-service"
+        build: payment-service/
+        hostname: localhost
+        ports:
+          - 8081:8081
+        links:
+          - mysqlservice
+        environment:
+          - spring_datasource_url=jdbc:mysql://mysqlservice:3306/RazorPay?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
+          - spring_datasource_username=root
+          - spring_datasource_password=root
+          - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+
+  order-service:
+    image: order-service
+    container_name: "order-service"
+    build: order-service/
+    hostname: localhost
+    ports:
+      - 8088:8088
+    links:
+      - mongodb-service
+    environment:
+#      - spring_data_mongodb_uri=mongodb://mongodb-service:27017/Order
+      - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+      - spring_data_mongodb_port=27017
+      - spring_data_mongodb_database=Order
+      - spring_data_mongodb_host=mongodb-service
+
+  helpDesk-service:
+    image: helpdesk-service
+    container_name: "helpDesk-service"
+    build: helpDesk-service/
+    hostname: localhost
+    ports:
+      - 8086:8086
+    links:
+      - mongodb-service
+      - rabbitmq
+    environment:
+      - spring_data_mongodb_uri=mongodb://mongodb-service:27017/helpdesk
+      - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+
+  authentication-service:
+    image: authentication-service
+    container_name: "authentication-service"
+    build: authentication-service/
+    hostname: localhost
+    ports:
+      - 8082:8082
+    links:
+      - mysqlservice:authservice
+    environment:
+      - spring_datasource_url=jdbc:mysql://mysqlservice:3306/authservice?useSSL=false
+      - spring_datasource_username=root
+      - spring_datasource_password=root
+      - eureka_client_serviceUrl_defaultZone=http://eureka-server:8761/eureka
+      - spring_rabbitmq_host=rabbitmq
